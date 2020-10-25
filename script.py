@@ -16,20 +16,7 @@ pdf_fp = os.path.join(data_dp, "The Governance of China by Xi Jinping - First Ed
 if __name__ == '__main__':
     ipdb.set_trace()
 
-    # -----------
-    # pdf to text
-    # -----------
-    # References:
-    # - https://stackoverflow.com/q/55767511 : How to extract text from pdf in python 3.7.3 (2019-2020)
-    #   - pdfplumber, tika
-    # - https://stackoverflow.com/q/59894592 : How to read simple text from a PDF file with Python? (2020)
-    #   - tried many solutions but pdfminer seems to work (provides code sample for pdf-to-text conversion)
-
-    # Method 1: pdfplumber
-    # References:
-    # - https://github.com/jsvine/pdfplumber : pdfplumber's GitHub
-    # - https://pypi.org/project/pdfplumber/ : pdfplumber's PyPI [Released: Oct 20, 2020)
-    # - https://stackoverflow.com/a/59384439
+    # pdf-to-text
     pdf = pdfplumber.open(pdf_fp)
     page = pdf.pages[0]
     text = page.extract_text()
