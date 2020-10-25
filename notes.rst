@@ -14,6 +14,14 @@ Method 1: ``pdfplumber``
 * `pdfplumber's PyPI`_: Released on Oct 20, 2020
 * Codes sample:
 
+  .. code-block:: python
+   
+     pdf = pdfplumber.open(pdf_fp)
+     page = pdf.pages[0]
+     text = page.extract_text()
+     print(text)
+     pdf.close()
+
 References
 ----------
 * `How to extract text from pdf in python 3.7.3 (stackoverflow)`_:  2019-2020
