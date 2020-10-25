@@ -1,6 +1,4 @@
 ======
 README
 ======
-book-analysis
-=============
-Book analysis
+**Book analysis**
