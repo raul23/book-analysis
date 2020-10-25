@@ -30,4 +30,4 @@ References
 ----------
 
 .. URLs
-.. _aHow to read simple text from a PDF file with Python?: https://stackoverflow.com/q/59894592
+.. _How to read simple text from a PDF file with Python?: https://stackoverflow.com/q/59894592
