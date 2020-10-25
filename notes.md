@@ -1,3 +1,6 @@
+* auto-gen TOC:
+{:toc}
+
 ## pdf-to-text
 ### Method 1: `pdfplumber`
 * [pdfplumber's GitHub](https://github.com/jsvine/pdfplumber)
