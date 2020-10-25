@@ -16,6 +16,8 @@ Method 1: ``pdfplumber``
 
   .. code-block:: python
    
+     import pdfplumber
+
      pdf = pdfplumber.open(pdf_fp)
      page = pdf.pages[0]
      text = page.extract_text()
