@@ -16,12 +16,12 @@ Method 1: ``pdfplumber``
 
 References
 ----------
-* [How to extract text from pdf in python 3.7.3 (stackoverflow)](https://stackoverflow.com/q/55767511):  2019-2020
+* `How to extract text from pdf in python 3.7.3 (stackoverflow)`_:  2019-2020
 
   * code sample for `pdfplumber` and `tika`
-* `How to read simple text from a PDF file with Python?`_: 2020
+* `How to read simple text from a PDF file with Python? (stackoverflow)`_: 2020
 
-  * OP tried many solutions but `pdfminer` seems to work; also provides code sample for pdf-to-text conversion using `pdfminer`
+  * OP tried many solutions but ``pdfminer`` seems to work; also provides code sample for pdf-to-text conversion using ``pdfminer``
 
 epub-to-text
 ============
@@ -30,4 +30,5 @@ References
 ----------
 
 .. URLs
-.. _How to read simple text from a PDF file with Python?: https://stackoverflow.com/q/59894592
+.. _How to extract text from pdf in python 3.7.3 (stackoverflow): https://stackoverflow.com/q/55767511
+.. _How to read simple text from a PDF file with Python? (stackoverflow): https://stackoverflow.com/q/59894592
