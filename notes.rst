@@ -18,7 +18,7 @@ Method 1: ``pdfplumber``
    
      import pdfplumber
 
-     pdf = pdfplumber.open(pdf_fp)
+     pdf = pdfplumber.open("book.pdf")
      page = pdf.pages[0]
      text = page.extract_text()
      print(text)
