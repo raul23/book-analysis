@@ -11,7 +11,7 @@ pdf-to-text
 Method 1: ``pdfplumber``
 ------------------------
 * `pdfplumber's GitHub`_
-* `pdfplumber's PyPI`_: Released: Oct 20, 2020
+* `pdfplumber's PyPI`_: Released on Oct 20, 2020
 * Codes sample:
 
 References
