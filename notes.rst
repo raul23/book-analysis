@@ -12,7 +12,7 @@ Method 1: ``pdfplumber``
 ------------------------
 * `pdfplumber's GitHub`_
 * `pdfplumber's PyPI`_: Released on Oct 20, 2020
-* Codes sample:
+* **Codes sample**:
 
   .. code-block:: python
    
