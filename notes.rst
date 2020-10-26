@@ -66,12 +66,13 @@ Method 2: ``ebooklib``
 
 References
 ----------
-* `Ebooklib's sample code (stackoverflow)`_: (2019)
+* `Ebooklib's sample code (stackoverflow)`_: 2019
 * `How to parse text from each chapter in epub? (stackoverflow)`_: 2019
-* https://askubuntu.com/a/102475 : Calibre's ``ebook-convert`` (2012)
+* `Calibre's ebook-convert (askubuntu)`_: 2012
 
 
 .. URLs
+.. _Calibre's ebook-convert (askubuntu): https://askubuntu.com/a/102475
 .. _EbookLib’s documentation: http://docs.sourcefabric.org/projects/ebooklib/en/latest
 .. _EbookLib’s GitHub: https://github.com/aerkalov/ebooklib
 .. _EbookLib’s PyPI: https://pypi.org/project/EbookLib
