@@ -37,6 +37,8 @@ epub-to-text
 ============
 Method 1: ``epub_conversion``
 -----------------------------
+**NOTE:** you need to install first `xml_cleaner`_ (see )
+
 * `epub_conversion's GitHub`_
 * `epub_conversion's PyPI`_: Released on Mar 18, 2020
 * **Codes sample**:
@@ -50,8 +52,6 @@ Method 1: ``epub_conversion``
 
 Method 2: ``ebooklib``
 ----------------------
-**NOTE:** you need to install first ``xml_cleaner`` (see https://pypi.org/project/xml-cleaner)
-
 * `EbookLib’s GitHub`_
 * `EbookLib’s PyPI`_: Released on Jan 3, 2019
 * `EbookLib’s documentation`_
@@ -86,4 +86,5 @@ References
 .. _How to read simple text from a PDF file with Python? (stackoverflow): https://stackoverflow.com/q/59894592
 .. _pdfplumber's GitHub: https://github.com/jsvine/pdfplumber
 .. _pdfplumber's PyPI: https://pypi.org/project/pdfplumber
+.. _xml_cleaner: https://pypi.org/project/xml-cleaner
 
