@@ -49,7 +49,7 @@ Method 1: ``epub_conversion``
 
 Method 2: ``ebooklib``
 ----------------------
-**NOTE:** you need to install ``xml_cleaner`` (see https://pypi.org/project/xml-cleaner)
+**NOTE:** you need to install first ``xml_cleaner`` (see https://pypi.org/project/xml-cleaner)
 
 * `EbookLib’s GitHub`_
 * `EbookLib’s PyPI`_: Released on Jan 3, 2019
