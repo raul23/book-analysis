@@ -49,7 +49,8 @@ Method 1: ``epub_conversion``
 
 Method 2: ``ebooklib``
 ----------------------
-**NOTE:** you need to install ``xml_cleaner`` (see `https://pypi.org/project/xml-cleaner`_)
+**NOTE:** you need to install ``xml_cleaner`` (see https://pypi.org/project/xml-cleaner)
+
 * `EbookLib’s GitHub`_
 * `EbookLib’s PyPI`_: Released on Jan 3, 2019
 * `EbookLib’s documentation`_
@@ -65,8 +66,8 @@ Method 2: ``ebooklib``
 
 References
 ----------
-* https://stackoverflow.com/a/55180536 : ``ebooklib``'s sample code (2019)
-* https://stackoverflow.com/q/56410564 : How to parse text from each chapter in epub? (2019)
+* `Ebooklib's sample code (stackoverflow)`_: (2019)
+* `How to parse text from each chapter in epub? (stackoverflow)`_: 2019
 * https://askubuntu.com/a/102475 : Calibre's ``ebook-convert`` (2012)
 
 
@@ -74,9 +75,11 @@ References
 .. _EbookLib’s documentation: http://docs.sourcefabric.org/projects/ebooklib/en/latest
 .. _EbookLib’s GitHub: https://github.com/aerkalov/ebooklib
 .. _EbookLib’s PyPI: https://pypi.org/project/EbookLib
+.. _Ebooklib's sample code (stackoverflow): https://stackoverflow.com/a/55180536
 .. _epub_conversion's GitHub: https://github.com/JonathanRaiman/epub_conversion
 .. _epub_conversion's PyPI: https://pypi.org/project/epub-conversion
 .. _How to extract text from pdf in python 3.7.3 (stackoverflow): https://stackoverflow.com/q/55767511
+.. _How to parse text from each chapter in epub? (stackoverflow): https://stackoverflow.com/q/56410564
 .. _How to read simple text from a PDF file with Python? (stackoverflow): https://stackoverflow.com/q/59894592
 .. _pdfplumber's GitHub: https://github.com/jsvine/pdfplumber
 .. _pdfplumber's PyPI: https://pypi.org/project/pdfplumber
