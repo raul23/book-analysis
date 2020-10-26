@@ -25,6 +25,11 @@ References
 
 epub-to-text
 ============
+Method 1: ``epub_conversion``
+-----------------------------
+
+Method 2: ``ebooklib``
+----------------------
 
 References
 ----------
