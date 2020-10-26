@@ -42,6 +42,7 @@ Method 1: ``epub_conversion``
 * **Codes sample**:
 
   .. code-block:: python
+
      from epub_conversion.utils import open_book, convert_epub_to_lines
 
      book = open_book(epub_fp)
@@ -57,6 +58,7 @@ Method 2: ``ebooklib``
 * **Codes sample**:
 
   .. code-block:: python
+
      import ebooklib
      from ebooklib import epub
 
