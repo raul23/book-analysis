@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import string
@@ -13,7 +14,7 @@ from genutils import config
 GET_TOKENIZER = {'TreebankWordTokenizer': TreebankWordTokenizer}
 
 
-def cleanup_tokens(tokens, remove_puncs=True, remove_stopwords=True):
+def cleanup_tokens(tokens, remove_punctuations=True, remove_stopwords=True):
     tokens_to_remove = set()
     puncs1 = ['``', '--', "''"]
     puncs2 = [p for p in string.punctuation]
@@ -21,7 +22,7 @@ def cleanup_tokens(tokens, remove_puncs=True, remove_stopwords=True):
     # diff_puncs2_puncs1 = set(puncs2).difference(puncs1)
     nltk.download('stopwords', quiet=True)
     stopwords = nltk.corpus.stopwords.words('english')
-    if remove_puncs:
+    if remove_punctuations:
         tokens_to_remove.update(set(puncs1))
         tokens_to_remove.update(set(puncs2))
     if remove_stopwords:
@@ -42,81 +43,191 @@ class Page:
 
 
 class PDFBook:
-    def __init__(self, pdf_filepath, title='__auto__', tokenizer='TreebankWordTokenizer',
-                 remove_puncs=True, remove_stopwords=True, enable_cache=True):
+    def __init__(self, pdf_filepath, title='__auto__',
+                 tokenizer='TreebankWordTokenizer', remove_punctuations=True,
+                 remove_stopwords=True, enable_cache=True):
         self.pdf_filepath = pdf_filepath
         if title == '__auto__':
-            self.title = os.path.basename(pdf_filepath).split('.pdf')
+            self.title = os.path.basename(pdf_filepath).split('.pdf')[0]
         else:
             self.title = title
         self.pdf = pdfplumber.open(pdf_filepath)
-        self.number_pages = len(self.pdf.pages)
+        self.total_number_pages = len(self.pdf.pages)
         self.tokenizer_name = tokenizer
         self.tokenizer = GET_TOKENIZER.get(tokenizer, TreebankWordTokenizer)()
-        self.remove_puncs = remove_puncs
+        self.remove_punctuations = remove_punctuations
         self.remove_stopwords = remove_stopwords
         self.enable_cache = enable_cache
         # e.g. October 23, 2014
         # TODO: make date regex more precise
         self.date_regex = r"([a-zA-Z]+) (\d{1,2}), (\d\d\d\d)"
+        # Pages where text was found and tokens extracted
         self.pages = {}
         self.cached_pages = {}
-        self.all_page_numbers = set()
+        # Pages that were processed, i.e. text and tokens extracted
+        self.processed_page_numbers = set()
         self.book_tokens = []
         self.lexicon = set()
         self.word_counts = {}
         self.last_saved_config = {}
 
     # pages = ['0-5', '10', '20-22', '30', '80-last']
-    def analyze(self, pages=None):
-        report = ""
-        self.all_page_numbers = self._get_all_page_numbers(pages)
+    def analyze(self, pages=None, report_type='json', topk_words=25,
+                bottomk_words=25):
+        self.processed_page_numbers = self._get_page_numbers_to_process(pages)
         use_cache = False if self._setup_cache() == 1 else True
-        if self.pages:
-            # Nothing changed. Two configs (previous and current) are identical
-            return report
-        # TODO: use thread (multiprocess?)
-        for page_number in self.all_page_numbers:
-            # TODO: add progress bar
-            print(page_number)
-            if use_cache:
-                page = self.cached_pages.get(page_number)
-                if page:
-                    # Page found in cache
-                    self.pages.setdefault(page_number, page)
-                    self.book_tokens += page.page_tokens
-                    continue
+        if not self.pages:
+            # TODO: use thread (multiprocess?)
+            for page_number in self.processed_page_numbers:
+                # TODO: add progress bar
+                print(page_number)
+                if use_cache:
+                    page = self.cached_pages.get(page_number)
+                    if page:
+                        # Page found in cache
+                        self.pages.setdefault(page_number, page)
+                        self.book_tokens += page.page_tokens
+                        continue
+                    else:
+                        # Page NOT found in cache
+                        # TODO: add logging
+                        pass
+                page = self.pdf.pages[page_number - 1]
+                # pdf-to-text conversion
+                text = page.extract_text()
+                if text:
+                    # Text found on given page
+                    text = page.extract_text().replace("\t", " ")
+                    page_type = self._get_page_type(text)
+                    page_tokens = cleanup_tokens(
+                        tokens=self.tokenizer.tokenize(text.lower()),
+                        remove_punctuations=self.remove_punctuations,
+                        remove_stopwords=self.remove_stopwords)
+                    self.pages.setdefault(page_number,
+                                          Page(page_number, page_type, page_tokens))
+                    self.book_tokens += page_tokens
                 else:
-                    # Page NOT found in cache
-                    # TODO: add logging
+                    # No text found on given page
+                    # TODO: add logging instead of pass
                     pass
-            page = self.pdf.pages[page_number - 1]
-            # pdf-to-text conversion
-            text = page.extract_text()
-            if text:
-                # Text found on given page
-                text = page.extract_text().replace("\t", " ")
-                page_type = self._get_page_type(text)
-                page_tokens = cleanup_tokens(
-                    tokens=self.tokenizer.tokenize(text.lower()),
-                    remove_puncs=self.remove_puncs,
-                    remove_stopwords=self.remove_stopwords)
-                self.pages.setdefault(page_number, Page(page_number, page_type, page_tokens))
-                self.book_tokens += page_tokens
-            else:
-                # No text found on given page
-                # TODO: add logging instead of pass
-                pass
-        self.book_tokens = sorted(self.book_tokens)
-        self.word_counts = Counter(self.book_tokens)
-        self.lexicon = sorted(set(self.book_tokens))
-        self._save_config()
-        self._cache_pages()
-        return report
+            self.book_tokens = sorted(self.book_tokens)
+            self.word_counts = Counter(self.book_tokens)
+            self.lexicon = sorted(set(self.book_tokens))
+            self._save_config()
+            self._cache_pages()
+        else:
+            # Nothing changed. Two configs (previous and current) are identical
+            # TODO: add logging instead of pass
+            pass
+        return self.get_report(report_type, topk_words, bottomk_words)
 
     def close(self):
         # TODO: reset book data and cache
         self.pdf.close()
+
+    def get_report(self, report_type='dict', k_most_common=25, k_least_common=25):
+        if report_type == 'rst':
+            return self._get_rst_report(k_most_common, k_least_common)
+        else:
+            report = {}
+            keys_to_ignore = {'pdf', 'tokenizer', 'date_regex', 'pages',
+                              'cached_pages', 'book_tokens', 'word_counts',
+                              'lexicon', 'last_saved_config', 'report'}
+            for k, v in self.__dict__.items():
+                if k in keys_to_ignore:
+                    continue
+                report.setdefault(k, v)
+            most_common = self.word_counts.most_common(k_most_common)
+            least_common = self.word_counts.most_common()[-k_least_common:]
+            report.setdefault("most_common_words", most_common)
+            report.setdefault("least_common_words", least_common)
+            if report_type == 'json':
+                return json.dumps(report)
+            else:
+                return report
+
+    @staticmethod
+    def _get_report_type_from_file(filepath):
+        ext = filepath.split('.')[1]
+        if ext in ['', 'json']:
+            # No extension defaults to json file
+            return 'json'
+        elif ext == 'rst':
+            return 'rst'
+        else:
+            # TODO: raise error: unsupported report file extension
+            raise ValueError("")
+
+    def save_report(self, filepath, k_most_common=25, k_least_common=25):
+        report_type = self._get_report_type_from_file(filepath)
+        report = self.get_report(report_type, k_most_common, k_least_common)
+        with open(filepath, 'w') as f:
+            # TODO: add k_*_common_words in reports for dict and json
+            if report_type == 'json':
+                json.dump(report, f)
+            elif report_type == 'rst':
+                f.write(report)
+            else:
+                # TODO: raise error: unsupported report file extension
+                pass
+
+    def _get_rst_report(self, k_most_common, k_least_common):
+        def get_removed_puncs_msg():
+            msg = "Punctuations {} removed"
+            return msg.format("were") if self.remove_punctuations else \
+                msg.format("were not")
+
+        def get_removed_stopwords_msg():
+            msg = "Stopwords {} removed"
+            return msg.format("were") if self.remove_punctuations else \
+                msg.format("were not")
+
+        def get_rst_least_common_list():
+            msg = ""
+            for word, count in self.word_counts.most_common()[-k_least_common:]:
+                msg += "- {}: {}\n".format(word, count)
+            return msg
+
+        def get_rst_most_common_list():
+            msg = ""
+            for word, count in self.word_counts.most_common(k_most_common):
+                msg += "- {}: {}\n".format(word, count)
+            return msg
+
+        most_common_line = "{} most common words".format(k_most_common)
+        least_common_line = "{} least common words".format(k_least_common)
+        report = """======
+Report
+======
+- **Title:** {title}
+- **Total number of pages:** {total_number_pages}
+- **Tokenizer:** {tokenizer}
+- **Number of pages processed:** {nb_pages_processed}
+- **{remove_punctuations}**
+- **{remove_stopwords}**
+
+{most_common_line}
+{n_dashes_most_common}
+{most_common_words_list}
+
+{least_common_line}
+{n_dashes_least_common}
+{least_common_words_list}
+""".format(
+            title=self.title,
+            total_number_pages=self.total_number_pages,
+            tokenizer=self.tokenizer_name,
+            nb_pages_processed=len(self.processed_page_numbers),
+            remove_punctuations=get_removed_puncs_msg(),
+            remove_stopwords=get_removed_stopwords_msg(),
+            most_common_line=most_common_line,
+            n_dashes_most_common=len(most_common_line) * "-",
+            most_common_words_list=get_rst_most_common_list(),
+            least_common_line=least_common_line,
+            n_dashes_least_common=len(least_common_line) * '-',
+            least_common_words_list=get_rst_least_common_list()
+        )
+        return report
 
     def _cache_pages(self):
         self.cached_pages.update(self.pages)
@@ -132,19 +243,20 @@ class PDFBook:
                 difference.append(config_name)
         return difference
 
-    def _get_all_page_numbers(self, pages):
-        all_page_numbers = []
+    def _get_page_numbers_to_process(self, pages):
+        page_numbers_to_process = []
         for page_range in pages:
-            page_range = page_range.replace('last', str(self.number_pages))
+            page_range = page_range.replace('last', str(self.total_number_pages))
             range_ends = page_range.split("-")
             page_numbers = self._get_page_numbers_from_range(range_ends)
-            all_page_numbers += page_numbers
-        return sorted(set(all_page_numbers))
+            page_numbers_to_process += page_numbers
+        return sorted(set(page_numbers_to_process))
 
     def _get_config(self):
         _config = {}
-        attr_names_to_keep = ['all_page_numbers', 'pdf_filepath', 'remove_puncs',
-                              'remove_stopwords', 'tokenizer_name']
+        attr_names_to_keep = ['processed_page_numbers', 'pdf_filepath',
+                              'remove_puncs', 'remove_stopwords',
+                              'tokenizer_name']
         for k, v in self.__dict__.items():
             if k in attr_names_to_keep:
                 _config[k] = v
@@ -169,9 +281,9 @@ class PDFBook:
         assert low_end <= high_end, \
             "Invalid page range: [{}-{}]".format(low_end, high_end)
         assert low_end > 0, "Page number can't be 0"
-        assert high_end <= self.number_pages, \
+        assert high_end <= self.total_number_pages, \
             "Invalid page number: {} is higher than the total number of pages " \
-            "({})".format(high_end, self.number_pages)
+            "({})".format(high_end, self.total_number_pages)
         return page_numbers
 
     def _get_page_type(self, text):
@@ -221,11 +333,14 @@ class PDFBook:
 if __name__ == '__main__':
     book = PDFBook(pdf_filepath=config.pdf_filepath,
                    tokenizer=config.tokenizer,
-                   remove_puncs=config.remove_punctuations,
+                   remove_punctuations=config.remove_punctuations,
                    remove_stopwords=config.remove_stopwords,
                    enable_cache=config.enable_cache)
-    book.analyze(config.pages)
+    report = book.analyze(config.pages, 'rst')
+    book.save_report("report.rst")
+    ipdb.set_trace()
     book.analyze(['30-35'])
+    ipdb.set_trace()
     book.analyze(['36-38'])
     ipdb.set_trace()
     book.analyze(['30-38'])
