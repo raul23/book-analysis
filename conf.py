@@ -1,3 +1,10 @@
+# --------------
+# General config
+# --------------
+# Cache results from book analysis, e.g. list of tokens. If cache is enabled,
+# past results will be reused but only if the ... TODO
+enable_cache = True
+
 # ------------------------
 # Directory and file paths
 # ------------------------
@@ -17,7 +24,7 @@ pdf_filepath = "The Governance of China by Xi Jinping - First Edition (2014).pdf
 # Example: ['0-5', '10-20', '30', '40-50', '100-last']
 # Use `last` in the rage for the last page of the ebook
 # pages = ['1-5', '10-20', '30', '40-50', '100-last']
-pages = ['28-38']
+pages = ['28-30']
 # Include also the notes in the analysis
 include_notes = False
 # Include also the appendix in the analysis
