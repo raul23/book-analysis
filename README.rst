@@ -8,15 +8,15 @@ book-analysis
 - **Punctuations were removed**
 - **Stop words were removed**
 
-25 most common words
-====================
-ethnic: 5
-great: 4
+25 most common words (occurrences)
+==================================
+- ethnic: 5
+- great: 4
 
-25 least common words
-=====================
-leadership: 1
-proud: 1
-public: 1
+25 least common words (occurrences)
+===================================
+- leadership: 1
+- proud: 1
+- public: 1
 
 
