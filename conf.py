@@ -24,7 +24,9 @@ pdf_filepath = "The Governance of China by Xi Jinping - First Edition (2014).pdf
 # Example: ['0-5', '10-20', '30', '40-50', '100-last']
 # Use `last` in the rage for the last page of the ebook
 # pages = ['1-5', '10-20', '30', '40-50', '100-last']
-pages = ['28-30']
+pages = ['92-96']
+# Include also the captions below pictures
+include_picture_captions = False
 # Include also the notes in the analysis
 include_notes = False
 # Include also the appendix in the analysis
