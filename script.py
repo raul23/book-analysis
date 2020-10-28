@@ -33,10 +33,11 @@ def cleanup_tokens(tokens, remove_punctuations=True, remove_stopwords=True):
 
 
 class Page:
-    def __init__(self, page_number, page_type, page_tokens):
+    def __init__(self, page_number, page_type, page_tokens, text):
         self.page_number = page_number
         self.page_type = page_type
         self.page_tokens = page_tokens
+        self.text = text
 
     def __repr__(self):
         return "<Page:{}>".format(self.page_number)
@@ -45,7 +46,9 @@ class Page:
 class PDFBook:
     def __init__(self, pdf_filepath, title='__auto__',
                  tokenizer='TreebankWordTokenizer', remove_punctuations=True,
-                 remove_stopwords=True, enable_cache=True):
+                 remove_stopwords=True, include_picture_captions=False,
+                 include_notes=False, include_appendix=False, enable_cache=True,
+                 **kwargs):
         self.pdf_filepath = pdf_filepath
         if title == '__auto__':
             self.title = os.path.basename(pdf_filepath).split('.pdf')[0]
@@ -57,6 +60,9 @@ class PDFBook:
         self.tokenizer = GET_TOKENIZER.get(tokenizer, TreebankWordTokenizer)()
         self.remove_punctuations = remove_punctuations
         self.remove_stopwords = remove_stopwords
+        self.include_picture_captions = include_picture_captions
+        self.include_notes = include_notes
+        self.include_appendix = include_appendix
         self.enable_cache = enable_cache
         # e.g. October 23, 2014
         # TODO: make date regex more precise
@@ -93,18 +99,23 @@ class PDFBook:
                         # TODO: add logging
                         pass
                 page = self.pdf.pages[page_number - 1]
+                if page.images and not self.include_picture_captions:
+                    # Text caption for image to be ignored
+                    # TODO: add logging that text will be skipped because it is part of an image's caption
+                    continue
                 # pdf-to-text conversion
                 text = page.extract_text()
                 if text:
                     # Text found on given page
-                    text = page.extract_text().replace("\t", " ")
-                    page_type = self._get_page_type(text)
+                    text = text.replace("\t", " ")
+                    page_type = self._get_page_type(text, page_number)
                     page_tokens = cleanup_tokens(
                         tokens=self.tokenizer.tokenize(text.lower()),
                         remove_punctuations=self.remove_punctuations,
                         remove_stopwords=self.remove_stopwords)
-                    self.pages.setdefault(page_number,
-                                          Page(page_number, page_type, page_tokens))
+                    self.pages.setdefault(
+                        page_number,
+                        Page(page_number, page_type, page_tokens, text))
                     self.book_tokens += page_tokens
                 else:
                     # No text found on given page
@@ -130,6 +141,8 @@ class PDFBook:
             return self._get_rst_report(k_most_common, k_least_common)
         else:
             report = {}
+            # TODO: it is simpler to just ignore all keys that are neither
+            # Boolean nor alphanumeric
             keys_to_ignore = {'pdf', 'tokenizer', 'date_regex', 'pages',
                               'cached_pages', 'book_tokens', 'word_counts',
                               'lexicon', 'last_saved_config', 'report'}
@@ -162,7 +175,6 @@ class PDFBook:
         report_type = self._get_report_type_from_file(filepath)
         report = self.get_report(report_type, k_most_common, k_least_common)
         with open(filepath, 'w') as f:
-            # TODO: add k_*_common_words in reports for dict and json
             if report_type == 'json':
                 json.dump(report, f)
             elif report_type == 'rst':
@@ -172,6 +184,16 @@ class PDFBook:
                 pass
 
     def _get_rst_report(self, k_most_common, k_least_common):
+        def get_include_appendix_msg():
+            msg = "Appendix {} included"
+            return msg.format("was") if self.include_notes else \
+                msg.format("was not")
+
+        def get_include_notes_msg():
+            msg = "Notes {} included"
+            return msg.format("were") if self.include_appendix else \
+                msg.format("were not")
+
         def get_removed_puncs_msg():
             msg = "Punctuations {} removed"
             return msg.format("were") if self.remove_punctuations else \
@@ -205,6 +227,8 @@ Report
 - **Number of pages processed:** {nb_pages_processed}
 - **{remove_punctuations}**
 - **{remove_stopwords}**
+- **{include_notes}**
+- **{include_appendix}**
 
 {most_common_line}
 {n_dashes_most_common}
@@ -220,6 +244,8 @@ Report
             nb_pages_processed=len(self.processed_page_numbers),
             remove_punctuations=get_removed_puncs_msg(),
             remove_stopwords=get_removed_stopwords_msg(),
+            include_notes=get_include_notes_msg(),
+            include_appendix=get_include_appendix_msg(),
             most_common_line=most_common_line,
             n_dashes_most_common=len(most_common_line) * "-",
             most_common_words_list=get_rst_most_common_list(),
@@ -286,18 +312,51 @@ Report
             "({})".format(high_end, self.total_number_pages)
         return page_numbers
 
-    def _get_page_type(self, text):
-        page_type = ""
-        if text.count("\n") == 2 and "." not in text:
+    def _get_page_type(self, text, page_number):
+        page_type = "unknown"
+        if "Appendix" == text.split("\n")[-1]:
+            page_type = "start_appendix_page"
+        elif text.count("\n") == 2 and "." not in text:
             page_type = "titled_page"
         elif "*" in text and re.search(self.date_regex, text):
             page_type = "start_speech_page"
         elif text.find("Notes") != -1 and text.find("[1]") != -1:
             page_type = "start_notes_page"
-        elif "Appendix" == text.split("\n")[-1]:
-            page_type = "appendix_page"
         else:
-            pass
+            prev_page_number = page_number - 1
+            # TODO: treat case when page_number = 1
+            prev_page = self.pages.get(prev_page_number)
+            if prev_page:
+                prev_page_type = prev_page.page_type
+            else:
+                prev_page = self.pdf.pages[prev_page_number - 1]
+                prev_page_text = prev_page.extract_text()
+                if not prev_page_text:
+                    # TODO: catch this error (LookupError?)
+                    raise LookupError("The type of the current page {} can't "
+                                      "be identified because its previous page "
+                                      "is empty.".format(page_number,
+                                                         prev_page_number))
+                prev_page_text = prev_page_text.replace("\t", " ")
+                prev_page_type = self._get_page_type(prev_page_text,
+                                                     prev_page_number)
+                page_tokens = cleanup_tokens(
+                    tokens=self.tokenizer.tokenize(prev_page_text.lower()),
+                    remove_punctuations=self.remove_punctuations,
+                    remove_stopwords=self.remove_stopwords)
+                self.cached_pages.update({
+                    prev_page_number: Page(prev_page_number, prev_page_type,
+                                           page_tokens, prev_page_text)
+                })
+            if prev_page_type in ['start_speech_page', 'next_speech_page']:
+                page_type = "next_speech_page"
+            elif prev_page_type in ['start_notes_page', 'next_notes_page']:
+                page_type = "next_notes_page"
+            elif prev_page_type in ['start_appendix_page', 'next_appendix_page']:
+                page_type = "next_appendix_page"
+            else:
+                # TODO: raise error (unknown page type)?
+                pass
         return page_type
 
     def _reset_book_data(self):
@@ -331,18 +390,12 @@ Report
 
 
 if __name__ == '__main__':
-    book = PDFBook(pdf_filepath=config.pdf_filepath,
-                   tokenizer=config.tokenizer,
-                   remove_punctuations=config.remove_punctuations,
-                   remove_stopwords=config.remove_stopwords,
-                   enable_cache=config.enable_cache)
-    report = book.analyze(config.pages, 'rst')
-    book.save_report("report.rst")
+    book = PDFBook(**config.settings)
+    report = book.analyze(config.settings.get('pages'), 'rst')
     ipdb.set_trace()
-    book.analyze(['30-35'])
-    ipdb.set_trace()
-    book.analyze(['36-38'])
-    ipdb.set_trace()
-    book.analyze(['30-38'])
+    # book.save_report("report.rst")
+    # Pictures with captions
+    book.analyze(['168-183', '345'])
+    # p.227, no Notes title
     ipdb.set_trace()
     book.close()
