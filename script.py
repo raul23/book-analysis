@@ -64,6 +64,8 @@ class PDFBook:
         self.include_notes = include_notes
         self.include_appendix = include_appendix
         self.enable_cache = enable_cache
+        self._default_explore_nb_pages = 2
+        self._explore_nb_pages = 2
         # e.g. October 23, 2014
         # TODO: make date regex more precise
         self.date_regex = r"([a-zA-Z]+) (\d{1,2}), (\d\d\d\d)"
@@ -101,7 +103,8 @@ class PDFBook:
                 page = self.pdf.pages[page_number - 1]
                 if page.images and not self.include_picture_captions:
                     # Text caption for image to be ignored
-                    # TODO: add logging that text will be skipped because it is part of an image's caption
+                    # TODO: add logging that text will be skipped because it
+                    # is part of an image's caption
                     continue
                 # pdf-to-text conversion
                 text = page.extract_text()
@@ -109,6 +112,21 @@ class PDFBook:
                     # Text found on given page
                     text = text.replace("\t", " ")
                     page_type = self._get_page_type(text, page_number)
+                    # TODO (IMPORTANT): problem if beginning analysis from an
+                    # appendix page that is not the titled appendix page
+                    if page_type.endswith('appendix_page') and \
+                            not self.include_appendix:
+                        # Ignore appendix page
+                        # TODO: add logging that we are ignoring an appendix page
+                        break
+                    elif page_type == 'next_notes_page' and \
+                            not self.include_notes:
+                        # Ignore notes-only page
+                        # TODO: add logging that we are ignoring a notes-only page
+                        continue
+                    elif page_type == 'start_notes_page':
+                        notes_pos = text.find("Notes")
+                        text = text[:notes_pos]
                     page_tokens = cleanup_tokens(
                         tokens=self.tokenizer.tokenize(text.lower()),
                         remove_punctuations=self.remove_punctuations,
@@ -154,6 +172,8 @@ class PDFBook:
             least_common = self.word_counts.most_common()[-k_least_common:]
             report.setdefault("most_common_words", most_common)
             report.setdefault("least_common_words", least_common)
+            report.setdefault("Number of tokens extracted", len(self.book_tokens))
+            report.setdefault("Size of lexicon", len(self.lexicon))
             if report_type == 'json':
                 return json.dumps(report)
             else:
@@ -238,6 +258,9 @@ class PDFBook:
             page_type = "start_speech_page"
         elif text.find("Notes") != -1 and text.find("[1]") != -1:
             page_type = "start_notes_page"
+        elif not self._explore_nb_pages:
+            self._explore_nb_pages = self._default_explore_nb_pages
+            page_type = "next_speech_page"
         else:
             prev_page_number = page_number - 1
             # TODO: treat case when page_number = 1
@@ -254,6 +277,7 @@ class PDFBook:
                                       "is empty.".format(page_number,
                                                          prev_page_number))
                 prev_page_text = prev_page_text.replace("\t", " ")
+                self._explore_nb_pages -= 1
                 prev_page_type = self._get_page_type(prev_page_text,
                                                      prev_page_number)
                 page_tokens = cleanup_tokens(
@@ -298,6 +322,11 @@ class PDFBook:
                 return msg.format("were") if self.include_appendix else \
                     msg.format("were not")
 
+            def get_include_picture_captions_msg():
+                msg = "Picture captions {} included"
+                return msg.format("were") if self.include_picture_captions else \
+                    msg.format("were not")
+
             def get_removed_puncs_msg():
                 msg = "Punctuations {} removed"
                 return msg.format("were") if self.remove_punctuations else \
@@ -329,8 +358,11 @@ class PDFBook:
     - **Total number of pages:** {total_number_pages}
     - **Tokenizer:** {tokenizer}
     - **Number of pages processed:** {nb_pages_processed}
+    - **Number of tokens extracted:** {nb_tokens_extracted}
+    - **Size of lexicon:** {lexicon_size}
     - **{remove_punctuations}**
     - **{remove_stopwords}**
+    - **{include_picture_captions}**
     - **{include_notes}**
     - **{include_appendix}**
 
@@ -346,8 +378,11 @@ class PDFBook:
                 total_number_pages=self.total_number_pages,
                 tokenizer=self.tokenizer_name,
                 nb_pages_processed=len(self.processed_page_numbers),
+                nb_tokens_extracted=len(self.book_tokens),
+                lexicon_size=len(self.lexicon),
                 remove_punctuations=get_removed_puncs_msg(),
                 remove_stopwords=get_removed_stopwords_msg(),
+                include_picture_captions=get_include_picture_captions_msg(),
                 include_notes=get_include_notes_msg(),
                 include_appendix=get_include_appendix_msg(),
                 most_common_line=most_common_line,
@@ -392,9 +427,8 @@ class PDFBook:
 if __name__ == '__main__':
     book = PDFBook(**config.settings)
     report = book.analyze(config.settings.get('pages'), 'rst')
-    # book.save_report("report.rst")
-    # Pictures with captions
-    # book.analyze(['168-183', '345'])
-    # p.227, no Notes title
     ipdb.set_trace()
+    book.save_report("report.rst")
+    # Pictures with captions: ['168-183', '345-356']
+    # p.227, no Notes title
     book.close()
