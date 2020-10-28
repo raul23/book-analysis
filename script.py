@@ -159,18 +159,6 @@ class PDFBook:
             else:
                 return report
 
-    @staticmethod
-    def _get_report_type_from_file(filepath):
-        ext = filepath.split('.')[1]
-        if ext in ['', 'json']:
-            # No extension defaults to json file
-            return 'json'
-        elif ext == 'rst':
-            return 'rst'
-        else:
-            # TODO: raise error: unsupported report file extension
-            raise ValueError("")
-
     def save_report(self, filepath, k_most_common=25, k_least_common=25):
         report_type = self._get_report_type_from_file(filepath)
         report = self.get_report(report_type, k_most_common, k_least_common)
@@ -182,78 +170,6 @@ class PDFBook:
             else:
                 # TODO: raise error: unsupported report file extension
                 pass
-
-    def _get_rst_report(self, k_most_common, k_least_common):
-        def get_include_appendix_msg():
-            msg = "Appendix {} included"
-            return msg.format("was") if self.include_notes else \
-                msg.format("was not")
-
-        def get_include_notes_msg():
-            msg = "Notes {} included"
-            return msg.format("were") if self.include_appendix else \
-                msg.format("were not")
-
-        def get_removed_puncs_msg():
-            msg = "Punctuations {} removed"
-            return msg.format("were") if self.remove_punctuations else \
-                msg.format("were not")
-
-        def get_removed_stopwords_msg():
-            msg = "Stopwords {} removed"
-            return msg.format("were") if self.remove_punctuations else \
-                msg.format("were not")
-
-        def get_rst_least_common_list():
-            msg = ""
-            for word, count in self.word_counts.most_common()[-k_least_common:]:
-                msg += "- {}: {}\n".format(word, count)
-            return msg
-
-        def get_rst_most_common_list():
-            msg = ""
-            for word, count in self.word_counts.most_common(k_most_common):
-                msg += "- {}: {}\n".format(word, count)
-            return msg
-
-        most_common_line = "{} most common words".format(k_most_common)
-        least_common_line = "{} least common words".format(k_least_common)
-        report = """======
-Report
-======
-- **Title:** {title}
-- **Total number of pages:** {total_number_pages}
-- **Tokenizer:** {tokenizer}
-- **Number of pages processed:** {nb_pages_processed}
-- **{remove_punctuations}**
-- **{remove_stopwords}**
-- **{include_notes}**
-- **{include_appendix}**
-
-{most_common_line}
-{n_dashes_most_common}
-{most_common_words_list}
-
-{least_common_line}
-{n_dashes_least_common}
-{least_common_words_list}
-""".format(
-            title=self.title,
-            total_number_pages=self.total_number_pages,
-            tokenizer=self.tokenizer_name,
-            nb_pages_processed=len(self.processed_page_numbers),
-            remove_punctuations=get_removed_puncs_msg(),
-            remove_stopwords=get_removed_stopwords_msg(),
-            include_notes=get_include_notes_msg(),
-            include_appendix=get_include_appendix_msg(),
-            most_common_line=most_common_line,
-            n_dashes_most_common=len(most_common_line) * "-",
-            most_common_words_list=get_rst_most_common_list(),
-            least_common_line=least_common_line,
-            n_dashes_least_common=len(least_common_line) * '-',
-            least_common_words_list=get_rst_least_common_list()
-        )
-        return report
 
     def _cache_pages(self):
         self.cached_pages.update(self.pages)
@@ -268,15 +184,6 @@ Report
             if self.last_saved_config[config_name] != current_config_value:
                 difference.append(config_name)
         return difference
-
-    def _get_page_numbers_to_process(self, pages):
-        page_numbers_to_process = []
-        for page_range in pages:
-            page_range = page_range.replace('last', str(self.total_number_pages))
-            range_ends = page_range.split("-")
-            page_numbers = self._get_page_numbers_from_range(range_ends)
-            page_numbers_to_process += page_numbers
-        return sorted(set(page_numbers_to_process))
 
     def _get_config(self):
         _config = {}
@@ -311,6 +218,15 @@ Report
             "Invalid page number: {} is higher than the total number of pages " \
             "({})".format(high_end, self.total_number_pages)
         return page_numbers
+
+    def _get_page_numbers_to_process(self, pages):
+        page_numbers_to_process = []
+        for page_range in pages:
+            page_range = page_range.replace('last', str(self.total_number_pages))
+            range_ends = page_range.split("-")
+            page_numbers = self._get_page_numbers_from_range(range_ends)
+            page_numbers_to_process += page_numbers
+        return sorted(set(page_numbers_to_process))
 
     def _get_page_type(self, text, page_number):
         page_type = "unknown"
@@ -359,6 +275,90 @@ Report
                 pass
         return page_type
 
+    @staticmethod
+    def _get_report_type_from_file(filepath):
+        ext = filepath.split('.')[1]
+        if ext in ['', 'json']:
+            # No extension defaults to json file
+            return 'json'
+        elif ext == 'rst':
+            return 'rst'
+        else:
+            # TODO: raise error: unsupported report file extension
+            raise ValueError("")
+
+    def _get_rst_report(self, k_most_common, k_least_common):
+            def get_include_appendix_msg():
+                msg = "Appendix {} included"
+                return msg.format("was") if self.include_notes else \
+                    msg.format("was not")
+
+            def get_include_notes_msg():
+                msg = "Notes {} included"
+                return msg.format("were") if self.include_appendix else \
+                    msg.format("were not")
+
+            def get_removed_puncs_msg():
+                msg = "Punctuations {} removed"
+                return msg.format("were") if self.remove_punctuations else \
+                    msg.format("were not")
+
+            def get_removed_stopwords_msg():
+                msg = "Stopwords {} removed"
+                return msg.format("were") if self.remove_punctuations else \
+                    msg.format("were not")
+
+            def get_rst_least_common_list():
+                msg = ""
+                for word, count in self.word_counts.most_common()[-k_least_common:]:
+                    msg += "- {}: {}\n".format(word, count)
+                return msg
+
+            def get_rst_most_common_list():
+                msg = ""
+                for word, count in self.word_counts.most_common(k_most_common):
+                    msg += "- {}: {}\n".format(word, count)
+                return msg
+
+            most_common_line = "{} most common words".format(k_most_common)
+            least_common_line = "{} least common words".format(k_least_common)
+            report = """======
+    Report
+    ======
+    - **Title:** {title}
+    - **Total number of pages:** {total_number_pages}
+    - **Tokenizer:** {tokenizer}
+    - **Number of pages processed:** {nb_pages_processed}
+    - **{remove_punctuations}**
+    - **{remove_stopwords}**
+    - **{include_notes}**
+    - **{include_appendix}**
+
+    {most_common_line}
+    {n_dashes_most_common}
+    {most_common_words_list}
+
+    {least_common_line}
+    {n_dashes_least_common}
+    {least_common_words_list}
+    """.format(
+                title=self.title,
+                total_number_pages=self.total_number_pages,
+                tokenizer=self.tokenizer_name,
+                nb_pages_processed=len(self.processed_page_numbers),
+                remove_punctuations=get_removed_puncs_msg(),
+                remove_stopwords=get_removed_stopwords_msg(),
+                include_notes=get_include_notes_msg(),
+                include_appendix=get_include_appendix_msg(),
+                most_common_line=most_common_line,
+                n_dashes_most_common=len(most_common_line) * "-",
+                most_common_words_list=get_rst_most_common_list(),
+                least_common_line=least_common_line,
+                n_dashes_least_common=len(least_common_line) * '-',
+                least_common_words_list=get_rst_least_common_list()
+            )
+            return report
+
     def _reset_book_data(self):
         self.pages = {}
         self.book_tokens = []
@@ -392,10 +392,9 @@ Report
 if __name__ == '__main__':
     book = PDFBook(**config.settings)
     report = book.analyze(config.settings.get('pages'), 'rst')
-    ipdb.set_trace()
     # book.save_report("report.rst")
     # Pictures with captions
-    book.analyze(['168-183', '345'])
+    # book.analyze(['168-183', '345'])
     # p.227, no Notes title
     ipdb.set_trace()
     book.close()
