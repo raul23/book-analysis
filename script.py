@@ -1,3 +1,4 @@
+import dill
 import json
 import os
 import re
@@ -33,11 +34,11 @@ def cleanup_tokens(tokens, remove_punctuations=True, remove_stopwords=True):
 
 
 class Page:
-    def __init__(self, page_number, page_type, page_tokens, text):
+    def __init__(self, page_number, page_type, page_tokens):
         self.page_number = page_number
         self.page_type = page_type
         self.page_tokens = page_tokens
-        self.text = text
+        # self.text = text
 
     def __repr__(self):
         return "<Page:{}>".format(self.page_number)
@@ -75,13 +76,13 @@ class PDFBook:
         # Pages that were processed, i.e. text and tokens extracted
         self.processed_page_numbers = set()
         self.book_tokens = []
-        self.lexicon = set()
-        self.word_counts = {}
+        # self.lexicon = set()
+        # self.word_counts = {}
         self.last_saved_config = {}
 
     # pages = ['0-5', '10', '20-22', '30', '80-last']
-    def analyze(self, pages=None, report_type='json', topk_words=25,
-                bottomk_words=25):
+    def analyze(self, pages=None, report_type='json', k_most_common=25,
+                k_least_common=25):
         self.processed_page_numbers = self._get_page_numbers_to_process(pages)
         use_cache = False if self._setup_cache() == 1 else True
         if not self.pages:
@@ -133,26 +134,29 @@ class PDFBook:
                         remove_stopwords=self.remove_stopwords)
                     self.pages.setdefault(
                         page_number,
-                        Page(page_number, page_type, page_tokens, text))
+                        Page(page_number, page_type, page_tokens))
                     self.book_tokens += page_tokens
                 else:
                     # No text found on given page
                     # TODO: add logging instead of pass
                     pass
             self.book_tokens = sorted(self.book_tokens)
-            self.word_counts = Counter(self.book_tokens)
-            self.lexicon = sorted(set(self.book_tokens))
+            # self.word_counts = Counter(self.book_tokens)
+            # self.lexicon = sorted(set(self.book_tokens))
             self._save_config()
             self._cache_pages()
         else:
             # Nothing changed. Two configs (previous and current) are identical
             # TODO: add logging instead of pass
             pass
-        return self.get_report(report_type, topk_words, bottomk_words)
+        return self.get_report(report_type, k_most_common, k_least_common)
 
     def close(self):
         # TODO: reset book data and cache
         self.pdf.close()
+
+    def get_lexicon(self):
+        return sorted(set(self.book_tokens))
 
     def get_report(self, report_type='dict', k_most_common=25, k_least_common=25):
         if report_type == 'rst':
@@ -168,16 +172,25 @@ class PDFBook:
                 if k in keys_to_ignore:
                     continue
                 report.setdefault(k, v)
-            most_common = self.word_counts.most_common(k_most_common)
-            least_common = self.word_counts.most_common()[-k_least_common:]
+            word_counts = Counter(self.book_tokens)
+            most_common = word_counts.most_common(k_most_common)
+            least_common = word_counts.most_common()[-k_least_common:]
             report.setdefault("most_common_words", most_common)
             report.setdefault("least_common_words", least_common)
             report.setdefault("Number of tokens extracted", len(self.book_tokens))
-            report.setdefault("Size of lexicon", len(self.lexicon))
+            lexicon = sorted(set(self.book_tokens))
+            report.setdefault("Size of lexicon", len(lexicon))
             if report_type == 'json':
                 return json.dumps(report)
             else:
                 return report
+
+    def get_word_counts(self):
+        return Counter(self.book_tokens)
+
+    def save_pickle(self, filepath):
+        with open(filepath, 'wb') as f:
+            dill.dump(self, f, protocol=dill.HIGHEST_PROTOCOL)
 
     def save_report(self, filepath, k_most_common=25, k_least_common=25):
         report_type = self._get_report_type_from_file(filepath)
@@ -286,7 +299,7 @@ class PDFBook:
                     remove_stopwords=self.remove_stopwords)
                 self.cached_pages.update({
                     prev_page_number: Page(prev_page_number, prev_page_type,
-                                           page_tokens, prev_page_text)
+                                           page_tokens)
                 })
             if prev_page_type in ['start_speech_page', 'next_speech_page']:
                 page_type = "next_speech_page"
@@ -312,93 +325,79 @@ class PDFBook:
             raise ValueError("")
 
     def _get_rst_report(self, k_most_common, k_least_common):
-            def get_include_appendix_msg():
-                msg = "Appendix {} included"
-                return msg.format("was") if self.include_notes else \
-                    msg.format("was not")
+            def get_msg(msg_type):
+                msg_types = {
+                    'appendix': ('Appendix {}included', self.include_notes),
+                    'notes': ('Notes {}included', self.include_appendix),
+                    'captions': ('Picture captions {}included', self.include_picture_captions),
+                    'puncs': ('Punctuations {}removed', self.remove_punctuations),
+                    'stopwords': ('Stopwords {}removed', self.remove_stopwords),
+                }
+                msg_type = msg_types[msg_type]
+                msg = msg_type[0]
+                cond = msg_type[1]
+                return msg.format("") if cond else msg.format("not ")
 
-            def get_include_notes_msg():
-                msg = "Notes {} included"
-                return msg.format("were") if self.include_appendix else \
-                    msg.format("were not")
-
-            def get_include_picture_captions_msg():
-                msg = "Picture captions {} included"
-                return msg.format("were") if self.include_picture_captions else \
-                    msg.format("were not")
-
-            def get_removed_puncs_msg():
-                msg = "Punctuations {} removed"
-                return msg.format("were") if self.remove_punctuations else \
-                    msg.format("were not")
-
-            def get_removed_stopwords_msg():
-                msg = "Stopwords {} removed"
-                return msg.format("were") if self.remove_punctuations else \
-                    msg.format("were not")
-
-            def get_rst_least_common_list():
+            def get_rst_common_list(common_type):
+                if common_type == 'most':
+                    word_counts = self.get_word_counts().most_common(k_most_common)
+                else:
+                    word_counts = self.get_word_counts().most_common()[-k_least_common:]
                 msg = ""
-                for word, count in self.word_counts.most_common()[-k_least_common:]:
-                    msg += "- {}: {}\n".format(word, count)
-                return msg
-
-            def get_rst_most_common_list():
-                msg = ""
-                for word, count in self.word_counts.most_common(k_most_common):
+                for word, count in word_counts:
                     msg += "- {}: {}\n".format(word, count)
                 return msg
 
             most_common_line = "{} most common words".format(k_most_common)
             least_common_line = "{} least common words".format(k_least_common)
             report = """======
-    Report
-    ======
-    - **Title:** {title}
-    - **Total number of pages:** {total_number_pages}
-    - **Tokenizer:** {tokenizer}
-    - **Number of pages processed:** {nb_pages_processed}
-    - **Number of tokens extracted:** {nb_tokens_extracted}
-    - **Size of lexicon:** {lexicon_size}
-    - **{remove_punctuations}**
-    - **{remove_stopwords}**
-    - **{include_picture_captions}**
-    - **{include_notes}**
-    - **{include_appendix}**
+Report
+======
+- **Title:** {title}
+- **Total number of pages:** {total_number_pages}
+- **Tokenizer:** {tokenizer}
+- **Number of pages processed:** {nb_pages_processed}
+- **Number of tokens extracted:** {nb_tokens_extracted}
+- **Size of lexicon:** {lexicon_size}
+- **{remove_punctuations}**
+- **{remove_stopwords}**
+- **{include_picture_captions}**
+- **{include_notes}**
+- **{include_appendix}**
 
-    {most_common_line}
-    {n_dashes_most_common}
-    {most_common_words_list}
+{most_common_line}
+{n_dashes_most_common}
+{most_common_words_list}
 
-    {least_common_line}
-    {n_dashes_least_common}
-    {least_common_words_list}
+{least_common_line}
+{n_dashes_least_common}
+{least_common_words_list}
     """.format(
                 title=self.title,
                 total_number_pages=self.total_number_pages,
                 tokenizer=self.tokenizer_name,
                 nb_pages_processed=len(self.processed_page_numbers),
                 nb_tokens_extracted=len(self.book_tokens),
-                lexicon_size=len(self.lexicon),
-                remove_punctuations=get_removed_puncs_msg(),
-                remove_stopwords=get_removed_stopwords_msg(),
-                include_picture_captions=get_include_picture_captions_msg(),
-                include_notes=get_include_notes_msg(),
-                include_appendix=get_include_appendix_msg(),
+                lexicon_size=len(self.get_lexicon()),
+                remove_punctuations=get_msg('puncs'),
+                remove_stopwords=get_msg('stopwords'),
+                include_picture_captions=get_msg('captions'),
+                include_notes=get_msg('notes'),
+                include_appendix=get_msg('appendix'),
                 most_common_line=most_common_line,
                 n_dashes_most_common=len(most_common_line) * "-",
-                most_common_words_list=get_rst_most_common_list(),
+                most_common_words_list=get_rst_common_list('most'),
                 least_common_line=least_common_line,
                 n_dashes_least_common=len(least_common_line) * '-',
-                least_common_words_list=get_rst_least_common_list()
+                least_common_words_list=get_rst_common_list('least')
             )
             return report
 
     def _reset_book_data(self):
         self.pages = {}
         self.book_tokens = []
-        self.lexicon = set()
-        self.word_counts = {}
+        # self.lexicon = set()
+        # self.word_counts = {}
 
     def _save_config(self):
         self.last_saved_config = self._get_config()
@@ -424,9 +423,18 @@ class PDFBook:
         return "<Book:{}>".format(os.path.basename(self.pdf_filepath))
 
 
+def load_pickle(filepath):
+    with open(filepath, 'rb') as f:
+        return dill.load(f)
+
+
 if __name__ == '__main__':
+    pickle_fp = 'test.pkl'
+    # book = load_pickle(pickle_fp)
+    # ipdb.set_trace()
     book = PDFBook(**config.settings)
     report = book.analyze(config.settings.get('pages'), 'rst')
+    book.save_pickle(pickle_fp)
     ipdb.set_trace()
     book.save_report("report.rst")
     # Pictures with captions: ['168-183', '345-356']
