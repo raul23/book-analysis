@@ -130,3 +130,6 @@ dmypy.json
 
 # Pickle
 *.pkl
+
+# Any kind of reports
+report*.*
