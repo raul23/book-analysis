@@ -1,7 +1,20 @@
 import os
-
+# Third-party
+import dill
+# Own
 import conf
-import ipdb
+
+
+def load_pickle(filepath):
+    # TODO: raise IOError
+    with open(filepath, 'rb') as f:
+        return dill.load(f)
+
+
+def save_pickle(obj, filepath, protocal=dill.HIGHEST_PROTOCOL):
+    # TODO: raise IOError
+    with open(filepath, 'wb') as f:
+        dill.dump(obj, f, protocol=protocal)
 
 
 class Config:
