@@ -41,7 +41,7 @@ Method 1: ``epub_conversion``
 
 * `epub_conversion's GitHub`_
 * `epub_conversion's PyPI`_: Released on Mar 18, 2020
-* **Codes sample**:
+* **Code sample**:
 
   .. code-block:: python
 
@@ -55,7 +55,7 @@ Method 2: ``ebooklib``
 * `EbookLib’s GitHub`_
 * `EbookLib’s PyPI`_: Released on Jan 3, 2019
 * `EbookLib’s documentation`_
-* **Codes sample**:
+* **Code sample**:
 
   .. code-block:: python
 
