@@ -47,7 +47,7 @@ Method 1: ``epub_conversion``
 
      from epub_conversion.utils import open_book, convert_epub_to_lines
 
-     book = open_book(epub_fp)
+     book = open_book("book.epub")
      lines = convert_epub_to_lines(book)
 
 Method 2: ``ebooklib``
@@ -62,7 +62,7 @@ Method 2: ``ebooklib``
      import ebooklib
      from ebooklib import epub
 
-     book = epub.read_epub(epub_fp)
+     book = epub.read_epub("book.epub")
      for doc in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
          pass
 
