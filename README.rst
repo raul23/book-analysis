@@ -3,7 +3,7 @@ book-analysis
 =============
 - **Title:** *The Governance of China* by Xi Jinping - First Edition (2014)
 - **Total number of pages:** 486
-- **Tokenizer:** TreebankWordTokenizer
+- **Tokenizer:** *TreebankWordTokenizer*
 - **Number of pages processed:** 459
 - **Number of tokens extracted:** 67725
 - **Size of lexicon:** 9058
