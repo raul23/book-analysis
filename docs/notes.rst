@@ -37,7 +37,7 @@ epub-to-text
 ============
 Method 1: ``epub_conversion``
 -----------------------------
-**NOTE:** you need to install first `xml_cleaner`_ (see `project's issue page`_)
+**NOTE:** you need to install first `xml_cleaner`_ (see `project's issues page`_)
 
 * `epub_conversion's GitHub`_
 * `epub_conversion's PyPI`_: Released on Mar 18, 2020
