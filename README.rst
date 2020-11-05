@@ -6,7 +6,7 @@ book-analysis
 - **Tokenizer:** *TreebankWordTokenizer*
 - **Number of pages processed:** 459
 - **Number of tokens extracted:** 67725
-- **Size of lexicon:** 9058
+- **Size of lexicon (unique tokens):** 9058
 - **Punctuations removed**
 - **Stopwords removed**
 - **Picture captions not included**
