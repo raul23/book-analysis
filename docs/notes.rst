@@ -2,6 +2,8 @@
 Notes
 =====
 
+Python libraries for pdf-to-text conversion
+
 .. contents:: **Table of contents**
    :depth: 3
    :local:
