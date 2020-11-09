@@ -1,5 +1,5 @@
 =============
-book-analysis
+Book Analysis
 =============
 - **Title:** *The Governance of China* by *Xi Jinping* - First Edition (2014)
 - **Total number of pages:** 486
