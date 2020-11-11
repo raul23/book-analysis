@@ -18,12 +18,12 @@ if __name__ == '__main__':
         shuffle_tokens=config.settings.get('shuffle_tokens'),
         random_seed=config.settings.get('random_seed')
     )
-    ipdb.set_trace()
     if config.settings.get('save_pickle'):
         save_pickle(book, config.settings.get('pickle_filepath'))
     if config.settings.get('save_report'):
-        book.save_report(config.settings.get('report_filepath'))
+        book.save_report(
+            **config.settings.get('filter_words_in_report'),
+            filepath=config.settings.get('report_filepath'))
     book.close()
-    ipdb.set_trace()
     book = load_pickle(config.settings.get('pickle_filepath'))
     book.close()
