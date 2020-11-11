@@ -1,6 +1,9 @@
 import string
 # Third-party
 import nltk
+from nltk.tokenize import TreebankWordTokenizer
+
+GET_TOKENIZER = {'TreebankWordTokenizer': TreebankWordTokenizer}
 
 
 def cleanup_tokens(tokens, remove_punctuations=True, remove_stopwords=True):
@@ -19,3 +22,16 @@ def cleanup_tokens(tokens, remove_punctuations=True, remove_stopwords=True):
     cleaned_tokens = [token for token in tokens if token not in tokens_to_remove]
     # diff = set(tokens).difference(cleaned_tokens)
     return cleaned_tokens
+
+
+class Tokenizer:
+    def __init__(self, category='TreebankWordTokenizer'):
+        self.category = category
+        # Instantiate tokenizer
+        self._tokenizer = GET_TOKENIZER.get(category,
+                                            TreebankWordTokenizer)()
+
+    def tokenize(self, text, remove_punctuations=True, remove_stopwords=True):
+        return cleanup_tokens(tokens=self._tokenizer.tokenize(text),
+                              remove_punctuations=remove_punctuations,
+                              remove_stopwords=remove_stopwords)
