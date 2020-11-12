@@ -35,10 +35,10 @@ class PDFBook:
         print('Loading "{}" ...'.format(self.book_title))
         self.pdf = pdfplumber.open(pdf_filepath)
         self.total_number_pages = len(self.pdf.pages)
-        self.save_tokens = tokenizer_cfg.pop('SAVE_TOKENS')
-        self.tokenizer_cfg = tokenizer_cfg
-        self.tokenizer = Tokenizer(
-            category=tokenizer_cfg.get('CATEGORY', 'TreebankWordTokenizer'))
+        self.save_tokens = None
+        self.tokenizer_cfg = None
+        self.tokenizer = None
+        self.update_tokenizer(tokenizer_cfg)
         # Pages where text was found and tokens extracted
         self.pages = {}
         self.book_tokens = []
@@ -65,7 +65,7 @@ class PDFBook:
         self._report = None
 
     # pages = ['0-5', '10', '20-22', '30', '80-last']
-    def analyze(self, pages=None, include_appendix=False, include_notes=False,
+    def analyze(self, pages, include_appendix=False, include_notes=False,
                 include_picture_captions=False, shuffle_tokens=True,
                 random_seed=None):
         # ipdb.set_trace()
@@ -80,14 +80,15 @@ class PDFBook:
             assert self._report is not None
             return self._report
         else:
-            # TODO: assert that self.pages should be empty
+            # TODO: assert that self.pages and self.book_tokens should be empty
             # TODO: use thread (multiprocess?)
-            print("\nProcessing pages")
+            print("\nProcessing {} pages".format(len(self.processed_page_numbers)))
+            reload_pdf = True
             for page_number in self.processed_page_numbers:
                 # TODO: add progress bar
                 print("Page {} ...".format(page_number))
                 if use_cache:
-                    page = self.cached_pages.get(page_number)
+                    page = self.cache.get_item('pages', page_number)
                     if page:
                         # Page found in cache
                         self.pages.setdefault(page_number, page)
@@ -96,18 +97,24 @@ class PDFBook:
                     else:
                         # Page NOT found in cache
                         # TODO: add logging
-                        pass
-                page = self.pdf.pages[page_number - 1]
-                if page.images and not include_picture_captions:
+                        # Reload the PDF book again
+                        # If not, I get pdfminer.pdftypes.PDFNotImplementedError: Unsupported filter: /'FlateDecode'
+                        if reload_pdf:
+                            print('Loading "{}" ...'.format(self.book_title))
+                            self.pdf = pdfplumber.open(self.pdf_filepath)
+                            reload_pdf = False
+                pdf_page = self.pdf.pages[page_number - 1]
+                if pdf_page.images and not include_picture_captions:
                     # Text caption for image to be ignored
                     # TODO: add logging that text will be skipped because it
                     # is part of an image's caption
                     continue
                 # pdf-to-text conversion
-                text = page.extract_text()
+                text = pdf_page.extract_text()
                 if text:
                     # Text found on given page
-                    self._preprocessing(text)
+                    # ipdb.set_trace()
+                    text = self._preprocessing(text)
                     page_type = self._get_page_type(text, page_number)
                     # TODO (IMPORTANT): problem if beginning analysis from an
                     # appendix page that is not the titled appendix page
@@ -133,6 +140,7 @@ class PDFBook:
                     # TODO: add logging instead of pass
                     pass
             # TODO: assert len(self.book_tokens) == sum(page_tokens from each page in self.pages)
+            # ipdb.set_trace()
             if shuffle_tokens:
                 if random_seed:
                     random.seed(random_seed)
@@ -210,6 +218,12 @@ class PDFBook:
             else:
                 # TODO: raise error: unsupported report file extension
                 pass
+
+    def update_tokenizer(self, tokenizer_cfg):
+        self.save_tokens = tokenizer_cfg.pop('SAVE_TOKENS')
+        self.tokenizer_cfg = tokenizer_cfg
+        self.tokenizer = Tokenizer(
+            category=tokenizer_cfg.get('CATEGORY', 'TreebankWordTokenizer'))
 
     def _diff_between_configs(self):
         # Get current config
@@ -407,10 +421,12 @@ Report
         if replacements:
             for old, new in replacements:
                 text = text.replace(old, new)
+        return text
 
     def _reset_book_data(self):
         self.pages = {}
         self.book_tokens = []
+        self._report = None
 
     def _save_config(self):
         self.last_saved_config = self._get_config()
