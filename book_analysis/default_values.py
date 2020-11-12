@@ -10,7 +10,8 @@ CACHE = {
 TOKENIZER = {
     'CATEGORY': 'TreebankWordTokenizer',
     'PREPROCESSING': {
-        'lower_text': True
+        'lower_text': True,
+        'replace': [("\t", " ")]
     },
     'FILTERS': {
         'remove_punctuations': True,
