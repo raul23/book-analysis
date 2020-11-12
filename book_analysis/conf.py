@@ -55,7 +55,7 @@ include_book_parts = {
 
 # Tokens shuffling
 # Otherwise, tokens will be sorted
-shuffle_tokens = False
+shuffle_tokens = True
 random_seed = 1234
 
 
