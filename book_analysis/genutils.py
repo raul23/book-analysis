@@ -26,6 +26,9 @@ class Cache:
     def __init__(self):
         self.cache = {}
 
+    def get_item(self, data_type, item_key):
+        return self.cache[data_type].get(item_key)
+
     def reset_cache(self):
         self.cache = {}
 
