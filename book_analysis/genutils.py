@@ -1,8 +1,21 @@
 import os
-# Third-party
+
 import dill
-# Custom
+import pdfplumber
+
 import conf
+
+import ipdb
+
+
+def load_pdf_book(filepath):
+    book = load_pickle(filepath)
+    # TODO: add logging for loading
+    print('Loading "{}" ...'.format(book.book_title))
+    # Reload the PDF book again
+    # If not, I get pdfminer.pdftypes.PDFNotImplementedError: Unsupported filter: /'FlateDecode'
+    book.pdf = pdfplumber.open(book.pdf_filepath)
+    return book
 
 
 def load_pickle(filepath):
@@ -23,18 +36,33 @@ def save_pickle(obj, filepath, protocal=dill.HIGHEST_PROTOCOL):
 
 
 class Cache:
-    def __init__(self):
-        self.cache = {}
+    def __init__(self, cache=None):
+        if cache:
+            self.cache = cache
+        else:
+            self.cache = {}
 
-    def get_item(self, data_type, item_key):
-        return self.cache[data_type].get(item_key)
+    def get_item(self, item_key, data_type):
+        if isinstance(self.cache[data_type], dict):
+            return self.cache[data_type].get(item_key)
+        elif isinstance(self.cache[data_type], set):
+            pass
+        else:
+            # TODO: raise Error (unsupported data type)
+            return None
 
-    def reset_cache(self):
-        self.cache = {}
+    def find_item(self, item_key, data_type):
+        return item_key in self.cache[data_type]
+
+    def reset_cache(self, cache=None):
+        if cache:
+            self.cache = cache
+        else:
+            self.cache = {}
 
     # TODO: specify that data should be a dict or set (with update function)
     def update_cache(self, data, data_type):
-        if self.cache.get(data_type):
+        if data_type in self.cache:
             self.cache[data_type].update(data)
         else:
             self.cache[data_type] = data
@@ -48,7 +76,7 @@ class Config:
         settings = {}
         for opt_name, opt_value in conf.__dict__.items():
             if not opt_name.startswith('__') and not opt_name.endswith('__'):
-                # TODO: add epub_filepath in list
+                # TODO: eventually add epub_filepath in list
                 if opt_name in ['pdf_filepath']:
                     data_dirpath = os.path.expanduser(conf.data_dirpath)
                     ebook_filepath = os.path.expanduser(opt_value)
