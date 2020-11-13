@@ -133,3 +133,6 @@ dmypy.json
 
 # Any kind of reports
 report*.*
+
+# Mac files
+.DS_Store
