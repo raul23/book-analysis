@@ -1,7 +1,7 @@
+import copy
 import json
 import os
 import random
-import re
 from collections import Counter
 
 import pdfplumber
@@ -9,7 +9,15 @@ import ipdb
 
 from default_values import CACHE, TOKENIZER
 from genutils import Cache
-from nlputils import cleanup_tokens, Tokenizer
+from nlputils import Tokenizer
+
+
+# Cache field names
+CACHE_LEXICON = 'lexicon'
+CACHE_LEXICON_PN = 'lexicon_page_numbers'
+CACHE_PAGES = 'pages'
+CACHE_WORD_COUNTS_PN = 'word_counts_page_numbers'
+CACHE_WORD_COUNTS = 'word_counts'
 
 
 class Page:
@@ -41,7 +49,7 @@ class PDFBook:
         self.update_tokenizer(tokenizer_cfg)
         # Pages where text was found and tokens extracted
         self.pages = {}
-        self.book_tokens = []
+        self.book_tokens = self._init_book_tokens()
         # Pages that are processed, i.e. text and tokens extracted
         self.processed_page_numbers = set()
         # Include book parts
@@ -51,7 +59,7 @@ class PDFBook:
         # Create cache
         self.cache_cfg = cache_cfg
         self.enable_cache = cache_cfg.get('ENABLE_CACHE', True)
-        self.cache = Cache()
+        self.cache = Cache(self._init_cache())
         # e.g. October 23, 2014
         # TODO: explain this attribute
         self.last_saved_config = {}
@@ -62,47 +70,52 @@ class PDFBook:
         self._explore_nb_pages = 2
         self._enable_tokens_shuffling = True
         self._random_seed = None
+        # Must not be altered by users
         self._report = None
 
     # pages = ['0-5', '10', '20-22', '30', '80-last']
     def analyze(self, pages, include_appendix=False, include_notes=False,
                 include_picture_captions=False, shuffle_tokens=True,
                 random_seed=None):
-        # ipdb.set_trace()
+        self._explore_nb_pages = self._default_explore_nb_pages
+        self.processed_page_numbers = set()
         self.include_appendix = include_appendix
         self.include_notes = include_notes
         self.include_picture_captions = include_picture_captions
         self.processed_page_numbers = self._get_page_numbers_to_process(pages)
-        use_cache = False if self._setup_cache() == 1 else True
-        if self.pages:
+        self._setup_cache()
+        if self.pages and list(self.pages.keys()) == self.processed_page_numbers:
             # Nothing changed. Two configs (previous and current) are identical
             # TODO: add logging for assert
             assert self._report is not None
             return self._report
         else:
-            # TODO: assert that self.pages and self.book_tokens should be empty
+            # TODO: assert that self.book_tokens should be empty
             # TODO: use thread (multiprocess?)
             print("\nProcessing {} pages".format(len(self.processed_page_numbers)))
-            reload_pdf = True
             for page_number in self.processed_page_numbers:
                 # TODO: add progress bar
                 print("Page {} ...".format(page_number))
-                if use_cache:
-                    page = self.cache.get_item('pages', page_number)
-                    if page:
-                        # Page found in cache
-                        self.pages.setdefault(page_number, page)
-                        self.book_tokens += page.page_tokens
-                        continue
-                    else:
-                        # Page NOT found in cache
-                        # TODO: add logging
-                        # Reload the PDF book again
-                        # If not, I get pdfminer.pdftypes.PDFNotImplementedError: Unsupported filter: /'FlateDecode'
-                        if reload_pdf:
-                            print('Loading "{}" ...'.format(self.book_title))
-                            self.pdf = pdfplumber.open(self.pdf_filepath)
-                            reload_pdf = False
+                # Check first in self.pages
+                page = self.pages.get(page_number)
+                if page:
+                    # Page found in self.pages
+                    self._update_book_tokens(page_number, page.page_tokens)
+                    continue
+                # Not found in self.pages
+                # Then, check in cache
+                page = self.cache.get_item(page_number, CACHE_PAGES)
+                if page:
+                    # Page found in cache
+                    self._update_pages(page)
+                    self._update_book_tokens(page_number, page.page_tokens)
+                    continue
+                else:
+                    # Page NOT found in cache
+                    # TODO: add logging
+                    pass
+                # Page neither found in cache nor in self.pages
+                # Then, process page from PDF book to extract tokens
                 pdf_page = self.pdf.pages[page_number - 1]
                 if pdf_page.images and not include_picture_captions:
                     # Text caption for image to be ignored
@@ -113,7 +126,6 @@ class PDFBook:
                 text = pdf_page.extract_text()
                 if text:
                     # Text found on given page
-                    # ipdb.set_trace()
                     text = self._preprocessing(text)
                     page_type = self._get_page_type(text, page_number)
                     # TODO (IMPORTANT): problem if beginning analysis from an
@@ -131,25 +143,26 @@ class PDFBook:
                     elif page_type == 'start_notes_page':
                         notes_pos = text.find("Notes")
                         text = text[:notes_pos]
+                        if text:
+                            page_type = 'next_speech_page_and_' + page_type
                     page_tokens = self.tokenizer.tokenize(
                         text=text, **self.tokenizer_cfg['FILTERS'])
-                    self._update_pages(page_tokens, page_number, page_type)
-                    self._update_book_tokens(page_tokens)
+                    self._update_book_tokens(page_number, page_tokens)
+                    page = Page(page_number, page_type, page_tokens)
+                    self._update_pages(page)
+                    self._update_pages_to_cache(page)
                 else:
                     # No text found on given page
                     # TODO: add logging instead of pass
                     pass
             # TODO: assert len(self.book_tokens) == sum(page_tokens from each page in self.pages)
-            # ipdb.set_trace()
             if shuffle_tokens:
                 if random_seed:
                     random.seed(random_seed)
-                random.shuffle(self.book_tokens)
+                random.shuffle(self.book_tokens['tokens'])
             else:
-                self.book_tokens = sorted(self.book_tokens)
+                self.book_tokens['tokens'] = sorted(self.book_tokens['tokens'])
             self._save_config()
-            self._update_cache()
-        # ipdb.set_trace()
         self._report = self.get_report('dict')
         return self._report
 
@@ -158,7 +171,7 @@ class PDFBook:
         self.pdf.close()
 
     def get_lexicon(self):
-        return sorted(set(self.book_tokens))
+        return sorted(set(self.book_tokens['tokens']))
 
     def get_report(self, report_type='dict', k_most_common=25, k_least_common=25):
         if self._report:
@@ -176,11 +189,10 @@ class PDFBook:
                 # No private attributes
                 if not k.startswith('_') and type(v) in attrs_to_include:
                     report.setdefault(k, v)
-            # ipdb.set_trace()
             report.setdefault("number_pages_processed", len(self.processed_page_numbers))
-            report.setdefault("number_tokens_extracted", len(self.book_tokens))
+            report.setdefault("number_tokens_extracted", len(self.book_tokens['tokens']))
             # TODO: use lexicon from cache if it is already there
-            lexicon = sorted(set(self.book_tokens))
+            lexicon = sorted(set(self.book_tokens['tokens']))
             report.setdefault("lexicon_size", len(lexicon))
             most_common = self.get_most_common_words(k_most_common)
             least_common = self.get_least_common_words(k_least_common)
@@ -197,15 +209,13 @@ class PDFBook:
             return report
 
     def get_least_common_words(self, k_least_common):
-        # TODO: use word_counts from cache if it is already there
         return self.get_word_counts().most_common()[-k_least_common:]
 
     def get_most_common_words(self, k_most_common):
-        # TODO: use word_counts from cache if it is already there
         return self.get_word_counts().most_common(k_most_common)
 
     def get_word_counts(self):
-        return Counter(self.book_tokens)
+        return Counter(self.book_tokens['tokens'])
 
     def save_report(self, filepath, k_most_common=25, k_least_common=25):
         report_type = self._get_report_type_from_file(filepath)
@@ -225,6 +235,76 @@ class PDFBook:
         self.tokenizer = Tokenizer(
             category=tokenizer_cfg.get('CATEGORY', 'TreebankWordTokenizer'))
 
+    @staticmethod
+    def _convert_report_to_rst(report):
+        def get_msg(msg_type):
+            msg_types = {
+                'appendix': ('Appendix {}included', report['include_appendix']),
+                'notes': ('Notes {}included', report['include_notes']),
+                'captions': ('Picture captions {}included', report['include_picture_captions']),
+                'puncs': ('Punctuations {}removed', report['remove_punctuations']),
+                'stopwords': ('Stopwords {}removed', report['remove_stopwords'])}
+            msg_type = msg_types[msg_type]
+            msg = msg_type[0]
+            cond = msg_type[1]
+            return msg.format("") if cond else msg.format("not ")
+
+        def get_rst_common_list(common_type):
+            if common_type == 'most':
+                # TODO: sort according to word occurrences ???
+                word_counts = report['most_common_words']
+            else:
+                # TODO: sort according to word occurrences (fine if all 1)
+                word_counts = sorted(report['least_common_words'])
+            msg = ""
+            for word, count in word_counts:
+                # TODO: remove newline if last item. Then add newline in report after {most_common_words_list}
+                msg += "- {}: {}\n".format(word, count)
+            return msg
+
+        most_common_line = "{} most common words".format(len(report['most_common_words']))
+        least_common_line = "{} least common words".format(len(report['least_common_words']))
+        report = """======
+    Report
+    ======
+    - **Title:** {title}
+    - **Total number of pages:** {total_number_pages}
+    - **Tokenizer:** {tokenizer}
+    - **Number of pages processed:** {nb_pages_processed}
+    - **Number of tokens extracted:** {nb_tokens_extracted}
+    - **Size of lexicon:** {lexicon_size}
+    - **{remove_punctuations}**
+    - **{remove_stopwords}**
+    - **{include_picture_captions}**
+    - **{include_notes}**
+    - **{include_appendix}**
+
+    {most_common_line}
+    {n_dashes_most_common}
+    {most_common_words_list}
+    {least_common_line}
+    {n_dashes_least_common}
+    {least_common_words_list}""".format(
+            title=report['book_title'],
+            total_number_pages=report['total_number_pages'],
+            tokenizer=report['tokenizer_category'],
+            nb_pages_processed=report['number_pages_processed'],
+            nb_tokens_extracted=report['number_tokens_extracted'],
+            lexicon_size=report['lexicon_size'],
+            remove_punctuations=get_msg('puncs'),
+            remove_stopwords=get_msg('stopwords'),
+            include_picture_captions=get_msg('captions'),
+            include_notes=get_msg('notes'),
+            include_appendix=get_msg('appendix'),
+            most_common_line=most_common_line,
+            n_dashes_most_common=len(most_common_line) * "-",
+            most_common_words_list=get_rst_common_list('most'),
+            least_common_line=least_common_line,
+            n_dashes_least_common=len(least_common_line) * '-',
+            least_common_words_list=get_rst_common_list('least')
+        )
+        return report
+
     def _diff_between_configs(self):
         # Get current config
         difference = []
@@ -236,14 +316,22 @@ class PDFBook:
                 difference.append(config_name)
         return difference
 
+    @staticmethod
+    def _find_items_in_list(items, _list):
+        for item in items:
+            if item in _list:
+                return True
+        return False
+
     def _get_config(self):
         _config = {}
         # TODO: use MD5 instead of pdf_filepath to check if you are processing the same ebook again
         attr_names_to_keep = ['pdf_filepath', 'processed_page_numbers',
-                              'tokenizer_cfg']
+                              'include_appendix', 'include_notes',
+                              'include_picture_captions', 'tokenizer_cfg']
         for k, v in self.__dict__.items():
             if k in attr_names_to_keep:
-                _config[k] = v
+                _config[k] = copy.deepcopy(v)
         # TODO: log msg for assert
         assert len(_config) == len(attr_names_to_keep)
         return _config
@@ -279,58 +367,12 @@ class PDFBook:
             range_ends = page_range.split("-")
             page_numbers = self._get_page_numbers_from_range(range_ends)
             page_numbers_to_process += page_numbers
+        # TODO: explain why page numbers should be unique (avoid processing the same page more than once)
         return sorted(set(page_numbers_to_process))
 
-    def _get_page_type(self, text, page_number):
-        page_type = "unknown"
-        if "Appendix" == text.split("\n")[-1]:
-            page_type = "start_appendix_page"
-        elif text.count("\n") == 2 and "." not in text:
-            page_type = "titled_page"
-        elif "*" in text and re.search(self._date_regex, text):
-            page_type = "start_speech_page"
-        elif text.find("Notes") != -1 and text.find("[1]") != -1:
-            page_type = "start_notes_page"
-        elif not self._explore_nb_pages:
-            self._explore_nb_pages = self._default_explore_nb_pages
-            page_type = "next_speech_page"
-        else:
-            prev_page_number = page_number - 1
-            # TODO: treat case when page_number = 1
-            prev_page = self.pages.get(prev_page_number)
-            if prev_page:
-                prev_page_type = prev_page._page_type
-            else:
-                prev_page = self.pdf.pages[prev_page_number - 1]
-                prev_page_text = prev_page.extract_text()
-                if not prev_page_text:
-                    # TODO: catch this error (LookupError?)
-                    raise LookupError("The type of the current page {} can't "
-                                      "be identified because its previous page "
-                                      "is empty.".format(page_number,
-                                                         prev_page_number))
-                prev_page_text = prev_page_text.replace("\t", " ")
-                self._explore_nb_pages -= 1
-                prev_page_type = self._get_page_type(prev_page_text,
-                                                     prev_page_number)
-                page_tokens = cleanup_tokens(
-                    tokens=self.tokenizer.tokenize(prev_page_text.lower()),
-                    remove_punctuations=self.remove_punctuations,
-                    remove_stopwords=self.remove_stopwords)
-                self.cached_pages.update({
-                    prev_page_number: Page(prev_page_number, prev_page_type,
-                                           page_tokens)
-                })
-            if prev_page_type in ['start_speech_page', 'next_speech_page']:
-                page_type = "next_speech_page"
-            elif prev_page_type in ['start_notes_page', 'next_notes_page']:
-                page_type = "next_notes_page"
-            elif prev_page_type in ['start_appendix_page', 'next_appendix_page']:
-                page_type = "next_appendix_page"
-            else:
-                # TODO: raise error (unknown page type)?
-                pass
-        return page_type
+    @staticmethod
+    def _get_page_type(text, page_number):
+        return None
 
     @staticmethod
     def _get_report_type_from_file(filepath):
@@ -345,74 +387,16 @@ class PDFBook:
             raise ValueError("")
 
     @staticmethod
-    def _convert_report_to_rst(report):
-            def get_msg(msg_type):
-                msg_types = {
-                    'appendix': ('Appendix {}included', report['include_appendix']),
-                    'notes': ('Notes {}included', report['include_notes']),
-                    'captions': ('Picture captions {}included', report['include_picture_captions']),
-                    'puncs': ('Punctuations {}removed', report['remove_punctuations']),
-                    'stopwords': ('Stopwords {}removed', report['remove_stopwords'])}
-                msg_type = msg_types[msg_type]
-                msg = msg_type[0]
-                cond = msg_type[1]
-                return msg.format("") if cond else msg.format("not ")
+    def _init_book_tokens():
+        return {'page_numbers': set(), 'tokens': []}
 
-            def get_rst_common_list(common_type):
-                if common_type == 'most':
-                    # TODO: sort according to word occurrences ???
-                    word_counts = report['most_common_words']
-                else:
-                    # TODO: sort according to word occurrences (fine if all 1)
-                    word_counts = sorted(report['least_common_words'])
-                msg = ""
-                for word, count in word_counts:
-                    # TODO: remove newline if last item. Then add newline in report after {most_common_words_list}
-                    msg += "- {}: {}\n".format(word, count)
-                return msg
-
-            most_common_line = "{} most common words".format(len(report['most_common_words']))
-            least_common_line = "{} least common words".format(len(report['least_common_words']))
-            report = """======
-Report
-======
-- **Title:** {title}
-- **Total number of pages:** {total_number_pages}
-- **Tokenizer:** {tokenizer}
-- **Number of pages processed:** {nb_pages_processed}
-- **Number of tokens extracted:** {nb_tokens_extracted}
-- **Size of lexicon:** {lexicon_size}
-- **{remove_punctuations}**
-- **{remove_stopwords}**
-- **{include_picture_captions}**
-- **{include_notes}**
-- **{include_appendix}**
-
-{most_common_line}
-{n_dashes_most_common}
-{most_common_words_list}
-{least_common_line}
-{n_dashes_least_common}
-{least_common_words_list}""".format(
-                title=report['book_title'],
-                total_number_pages=report['total_number_pages'],
-                tokenizer=report['tokenizer_category'],
-                nb_pages_processed=report['number_pages_processed'],
-                nb_tokens_extracted=report['number_tokens_extracted'],
-                lexicon_size=report['lexicon_size'],
-                remove_punctuations=get_msg('puncs'),
-                remove_stopwords=get_msg('stopwords'),
-                include_picture_captions=get_msg('captions'),
-                include_notes=get_msg('notes'),
-                include_appendix=get_msg('appendix'),
-                most_common_line=most_common_line,
-                n_dashes_most_common=len(most_common_line) * "-",
-                most_common_words_list=get_rst_common_list('most'),
-                least_common_line=least_common_line,
-                n_dashes_least_common=len(least_common_line) * '-',
-                least_common_words_list=get_rst_common_list('least')
-            )
-            return report
+    @staticmethod
+    def _init_cache():
+        return {CACHE_PAGES: {},
+                CACHE_LEXICON: set(),
+                CACHE_LEXICON_PN: set(),
+                CACHE_WORD_COUNTS: Counter(),
+                CACHE_WORD_COUNTS_PN: set()}
 
     def _preprocessing(self, text):
         if self.tokenizer_cfg['PREPROCESSING'].get('lower_text', True):
@@ -423,60 +407,121 @@ Report
                 text = text.replace(old, new)
         return text
 
-    def _reset_book_data(self):
-        self.pages = {}
-        self.book_tokens = []
+    def _reset_book_data(self, keep_pages=False):
+        if keep_pages:
+            pages = {}
+            for k, v in self.pages.items():
+                if k in self.processed_page_numbers:
+                    pages.setdefault(k, v)
+            self.pages = pages
+        else:
+            self.pages = {}
+        self.book_tokens = self._init_book_tokens()
         self._report = None
 
     def _save_config(self):
         self.last_saved_config = self._get_config()
 
     def _setup_cache(self):
-        retcode = 1
-        if self.enable_cache:
-            diff = self._diff_between_configs()
-            if len(diff) == 0:
-                retcode = 0
-            elif len(diff) == 1 and diff[0] == 'processed_page_numbers':
-                retcode = 0
-                self._reset_book_data()
-            else:
-                retcode = 1
-        if retcode == 1:
-            # Reset cache
-            self.cache.reset_cache()
-            self._reset_book_data()
-        return retcode
-
-    def _update_book_tokens(self, page_tokens):
-        if self.save_tokens.get('per_book'):
-            self.book_tokens += page_tokens
-
-    def _update_cache(self):
-        if self.enable_cache:
-            for k in ['lexicon', 'pages', 'word_counts']:
-                if self.cache_cfg['DATA_TO_CACHE'].get(k):
-                    data = {}
-                    if k == 'lexicon':
-                        data = set(self.book_tokens)
-                    elif k == 'pages':
-                        data = self.pages
-                    elif k == 'word_counts':
-                        data = Counter(self.book_tokens)
-                    else:
-                        # TODO: raise Error
-                        pass
-                    #  Specify that data should be a dict or set (with update function)
-                    self.cache.update_cache(data, k)
-
-    def _update_pages(self, page_tokens, page_number, page_type):
-        if self.save_tokens.get('per_page'):
-            pt = page_tokens
+        # TODO: log assert msg error
+        assert len(self.processed_page_numbers)
+        # Difference between current config and last saved config
+        diff = self._diff_between_configs()
+        if len(diff) == 0:
+            case = 'no_diff'
+        elif self._find_items_in_list(['tokenizer_cfg', 'pdf_filepath'], diff):
+            case = 'reset_everything'
         else:
-            pt = []
-        self.pages.setdefault(
-            page_number,
-            Page(page_number, page_type, page_tokens=pt))
+            # Keep necessary pages in self.pages
+            case = 'reset_book_data'
+        if self.enable_cache:
+            # Use cache
+            if case == 'no_diff':
+                # No difference between configs
+                # TODO: log msg
+                self._update_pages_to_cache(self.pages)
+                # return 0
+            elif case == 'reset_everything':
+                # Tokenizer config changed
+                # Reset cache
+                self.cache.reset_cache(self._init_cache())
+                self._reset_book_data()
+                # TODO: log msg
+                # return 1
+            else:
+                # e.g. process_page_numbers changed
+                self._update_pages_to_cache(self.pages)
+                self._reset_book_data(True)
+                # TODO: log msg
+                # return 0
+        else:
+            # Don't use cache
+            if case == 'reset_everything':
+                # Tokenizer config changed
+                self.cache.reset_cache(self._init_cache())
+                self._reset_book_data()
+                # TODO: log msg
+            elif case == 'reset_book_data':
+                # e.g. process_page_numbers changed
+                self._reset_book_data(True)
+                # TODO: log msg
+            else:
+                # TODO: log msg
+                pass
+            # return 1
+
+    def _update_book_tokens(self, page_number, page_tokens):
+        if self.save_tokens.get('per_book'):
+            if page_number not in self.book_tokens['page_numbers']:
+                self.book_tokens['page_numbers'].add(page_number)
+                self.book_tokens['tokens'] += page_tokens
+            else:
+                # TODO: add logging (page number already processed)
+                pass
+
+    def _update_cache(self, data_type, page):
+        if self.enable_cache and self.cache_cfg['DATA_TO_CACHE'].get(data_type):
+            # Check first duplicate page numbers
+            if data_type == CACHE_LEXICON and \
+                    self.cache.find_item(page.page_number, CACHE_LEXICON_PN):
+                # TODO: log msg (duplicate lexicon, page number already found)
+                pass
+            elif data_type == CACHE_PAGES and \
+                    self.cache.find_item(page.page_number, CACHE_PAGES):
+                # TODO: log msg (duplicate pages, page number already found)
+                pass
+            elif data_type == CACHE_WORD_COUNTS and \
+                    self.cache.find_item(page.page_number, CACHE_WORD_COUNTS_PN):
+                # TODO: log msg (duplicate word counts, page number already found)
+                pass
+            else:
+                data = {}
+                if data_type == CACHE_LEXICON:
+                    data = set(page.page_tokens)
+                    self.cache.update_cache({page.page_number}, CACHE_LEXICON_PN)
+                elif data_type == CACHE_PAGES:
+                    data = {page.page_number: page}
+                elif data_type == CACHE_WORD_COUNTS:
+                    data = Counter(page.page_tokens)
+                    self.cache.update_cache({page.page_number}, CACHE_WORD_COUNTS_PN)
+                else:
+                    # TODO: add logging (Error)
+                    pass
+                #  Specify that data should be a dict or set (with update function)
+                self.cache.update_cache(data, data_type)
+
+    def _update_pages(self, page):
+        if not self.save_tokens.get('per_page'):
+            page.page_tokens = []
+        self.pages.update({page.page_number: page})
+
+    def _update_pages_to_cache(self, pages):
+        data_types = [CACHE_LEXICON, CACHE_PAGES, CACHE_WORD_COUNTS]
+        if isinstance(pages, Page):
+            pages = {pages.page_number: pages}
+        for page_number, page in pages.items():
+            for dt in data_types:
+                self._update_cache(dt, page)
 
     def __repr__(self):
         return "<Book:{}>".format(os.path.basename(self.pdf_filepath))
